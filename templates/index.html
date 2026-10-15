@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Smart Cubicle Defense | SAVe-Duality NOC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes alert-pulse {
+
+            0%,
+            100% {
+                border-color: rgba(239, 68, 68, 0.9);
+                box-shadow: 0 0 35px rgba(239, 68, 68, 0.6);
+            }
+
+            50% {
+                border-color: rgba(239, 68, 68, 0.2);
+                box-shadow: 0 0 5px rgba(239, 68, 68, 0.1);
+            }
+        }
+
+        .alarm-border {
+            animation: alert-pulse 1s infinite;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-950 text-slate-100 min-h-screen font-mono">
+
+    <!-- Top Header -->
+    <header class="border-b border-slate-800 bg-slate-900/80 px-6 py-4 flex items-center justify-between backdrop-blur">
+        <div class="flex items-center space-x-3">
+            <div id="status-indicator" class="w-3.5 h-3.5 bg-emerald-500 rounded-full animate-ping"></div>
+            <h1 class="text-lg font-bold tracking-wider text-emerald-400">SMART WORKSTATION DEFENSE // PYTORCH & APACHE
+            </h1>
+        </div>
+        <div class="flex items-center space-x-3 text-xs">
+            <span class="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded text-slate-300">STREAM: APACHE
+                KAFKA</span>
+            <span class="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded text-slate-300">LAKE: APACHE
+                ICEBERG</span>
+            <span id="active-user-badge"
+                class="bg-emerald-950 border border-emerald-500 text-emerald-400 font-bold px-3 py-1.5 rounded">NO OWNER
+                ENROLLED</span>
+        </div>
+    </header>
+
+    <div class="p-6 grid grid-cols-12 gap-6">
+
+        <!-- Left Column: Video Feed & Live Status -->
+        <div class="col-span-8 space-y-4">
+            <div id="video-box"
+                class="bg-slate-900 border-2 border-slate-800 rounded-lg overflow-hidden p-2 relative shadow-2xl transition-all">
+                <div
+                    class="flex justify-between items-center px-2 py-1 mb-2 text-xs text-slate-400 border-b border-slate-800">
+                    <span>LIVE CUBICLE CAM [FACETIME HD]</span>
+                    <span id="incident-badge" class="text-emerald-400 font-bold">STATUS: SECURE BASELINE</span>
+                </div>
+                <img src="/video_feed" class="w-full h-[450px] object-cover rounded bg-black" alt="CCTV Feed">
+            </div>
+        </div>
+
+        <!-- Right Column: Biometric Enrollment & Sensors -->
+        <div class="col-span-4 space-y-4">
+
+            <!-- Owner Face Enrollment Box -->
+            <div class="bg-slate-900 border border-slate-800 rounded-lg p-4">
+                <div class="text-xs text-slate-400 font-bold mb-1">📸 BIOMETRIC FACEID ENROLLMENT</div>
+                <div class="text-[11px] text-slate-500 mb-3">Captures 15 neural angles using PyTorch Deep Metric
+                    Extraction.</div>
+
+                <div class="space-y-3">
+                    <input type="text" id="owner-name-input" placeholder="Enter Owner Name (e.g., Sohini)"
+                        class="w-full bg-slate-950 border border-slate-700 text-xs text-slate-100 px-3 py-2 rounded focus:outline-none focus:border-emerald-500">
+
+                    <div class="flex space-x-2">
+                        <button id="enroll-btn" onclick="enrollCurrentFace()"
+                            class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2 rounded transition active:scale-95">
+                            Start FaceID Scan
+                        </button>
+                        <button onclick="clearAllOwners()"
+                            class="bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-400 text-xs px-3 py-2 rounded border border-slate-700 transition">
+                            Clear
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Enrolled Owners List -->
+                <div class="mt-3 pt-3 border-t border-slate-800 text-[11px] text-slate-400">
+                    <span class="font-bold text-slate-300">Enrolled Owners:</span>
+                    <span id="enrolled-names" class="text-emerald-400 ml-1">None</span>
+                </div>
+            </div>
+
+            <!-- Sensor Gauges -->
+            <div class="grid grid-cols-2 gap-3">
+                <div class="bg-slate-900 border border-slate-800 rounded-lg p-3 text-center">
+                    <div class="text-[11px] text-slate-400 mb-1">ACOUSTIC SENSOR (MIC)</div>
+                    <div id="audio-val" class="text-2xl font-extrabold text-sky-400">0.0</div>
+                    <div class="text-[9px] text-slate-500 mt-0.5">Thud Alert &gt; 12.0</div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-lg p-3 text-center">
+                    <div class="text-[11px] text-slate-400 mb-1">DESK MOTION SENSOR</div>
+                    <div id="motion-val" class="text-2xl font-extrabold text-amber-400">0.0</div>
+                    <div class="text-[9px] text-slate-500 mt-0.5">Theft Alert &gt; 5.0</div>
+                </div>
+            </div>
+
+            <!-- Apache Iceberg Live Lakehouse Table -->
+            <div class="bg-slate-900 border border-slate-800 rounded-lg p-4">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs text-slate-400 font-bold">APACHE ICEBERG DATA LAKE (ACID LOG)</span>
+                    <span class="text-[10px] text-emerald-400">Queried via PyIceberg</span>
+                </div>
+                <div class="overflow-y-auto h-36 text-[11px]">
+                    <table class="w-full text-left text-slate-300">
+                        <thead class="text-slate-500 border-b border-slate-800">
+                            <tr>
+                                <th class="pb-1">TIMESTAMP</th>
+                                <th class="pb-1">INCIDENT</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-table-body">
+                            <!-- Injected live from real Iceberg table -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Live Telemetry Poller -->
+    <script>
+        let registeredOwners = [];
+
+        async function enrollCurrentFace() {
+            const input = document.getElementById('owner-name-input');
+            const btn = document.getElementById('enroll-btn');
+            const name = input.value.trim();
+            if (!name) {
+                alert("Please enter a name first!");
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = "Scanning 15 Angles...";
+            btn.className = "flex-1 bg-amber-600 text-white font-bold text-xs py-2 rounded animate-pulse";
+
+            try {
+                const res = await fetch('/api/enroll_owner', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name })
+                });
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    if (!registeredOwners.includes(name)) registeredOwners.push(name);
+                    document.getElementById('enrolled-names').innerText = registeredOwners.join(', ');
+                    input.value = '';
+                    alert(`[✓] FaceID master profile saved for ${name} (${data.frames_scanned} angles compiled)!`);
+                } else {
+                    alert(`[!] ${data.message}`);
+                }
+            } catch (err) {
+                alert("Enrollment failed. Ensure face is clearly visible.");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Start FaceID Scan";
+                btn.className = "flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2 rounded transition active:scale-95";
+            }
+        }
+
+        async function clearAllOwners() {
+            await fetch('/api/clear_owners', { method: 'POST' });
+            registeredOwners = [];
+            document.getElementById('enrolled-names').innerText = 'None';
+            alert("Cleared all enrolled owners.");
+        }
+
+        // Poll telemetry every 350ms (Zero Lag)
+        setInterval(async () => {
+            try {
+                const res = await fetch('/api/telemetry');
+                const data = await res.json();
+
+                document.getElementById('audio-val').innerText = data.audio_level;
+                document.getElementById('motion-val').innerText = data.motion_level || data.desk_assets || 0;
+                document.getElementById('incident-badge').innerText = data.incident_tag;
+
+                const videoBox = document.getElementById('video-box');
+                const badge = document.getElementById('incident-badge');
+                const userBadge = document.getElementById('active-user-badge');
+                const ping = document.getElementById('status-indicator');
+
+                if (data.owner_name !== "None") {
+                    userBadge.innerText = `OWNER: ${data.owner_name.toUpperCase()} (AUTH)`;
+                    userBadge.className = 'bg-emerald-950 border border-emerald-500 text-emerald-400 font-bold px-3 py-1.5 rounded';
+                } else if (data.person_present) {
+                    userBadge.innerText = 'VISITOR / STRANGER PRESENT';
+                    userBadge.className = 'bg-amber-950 border border-amber-500 text-amber-400 font-bold px-3 py-1.5 rounded';
+                } else {
+                    userBadge.innerText = 'CUBICLE EMPTY / MONITORING';
+                    userBadge.className = 'bg-slate-800 border border-slate-700 text-slate-400 font-bold px-3 py-1.5 rounded';
+                }
+
+                if (data.status === 'TAMPER_DETECTED') {
+                    videoBox.classList.add('alarm-border');
+                    badge.className = 'text-red-400 font-bold';
+                    ping.className = 'w-3.5 h-3.5 bg-red-500 rounded-full animate-ping';
+                } else if (data.status === 'VISITOR_NOTICE') {
+                    videoBox.classList.remove('alarm-border');
+                    badge.className = 'text-amber-400 font-bold';
+                    ping.className = 'w-3.5 h-3.5 bg-amber-500 rounded-full animate-ping';
+                } else {
+                    videoBox.classList.remove('alarm-border');
+                    badge.className = 'text-emerald-400 font-bold';
+                    ping.className = 'w-3.5 h-3.5 bg-emerald-500 rounded-full animate-ping';
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }, 350);
+
+        // Fetch Live Incident Logs Directly from Fast Cache
+        setInterval(async () => {
+            try {
+                const res = await fetch('/api/iceberg_logs');
+                const records = await res.json();
+                const tbody = document.getElementById('audit-table-body');
+                tbody.innerHTML = '';
+                records.forEach(r => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'border-b border-slate-800 text-rose-300';
+                    tr.innerHTML = `<td>${r.timestamp}</td><td>${r.incident.slice(0, 36)}</td>`;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.error(err);
+            }
+        }, 2000);
+    </script>
+</body>
+
+</html>

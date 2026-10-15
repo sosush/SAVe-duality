@@ -1,0 +1,45 @@
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment directories
+venv/
+.env/
+.venv/
+
+# Distribution / packaging
+build/
+*.egg-info/
+.dist/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Pytest cache
+.pytest_cache/
+
+# MyPy cache
+.mypy_cache/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+
+# IDE/editor files
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Logs and data files
+logs/
+*.log
+
+# Docker files (optional, but keep docker-compose.yml)
+# (Docker images are not stored in repo)
+
+# Miscellaneous
+*.rdb
