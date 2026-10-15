@@ -3,136 +3,415 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Smart Cubicle Defense | SAVe-Duality NOC</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAVe-Duality — Dashboard</title>
     <style>
-        @keyframes alert-pulse {
-
-            0%,
-            100% {
-                border-color: rgba(239, 68, 68, 0.9);
-                box-shadow: 0 0 35px rgba(239, 68, 68, 0.6);
-            }
-
-            50% {
-                border-color: rgba(239, 68, 68, 0.2);
-                box-shadow: 0 0 5px rgba(239, 68, 68, 0.1);
-            }
+        /* ── Reset & Base ─────────────────────────────────── */
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
-        .alarm-border {
-            animation: alert-pulse 1s infinite;
+        :root {
+            --bg: #0f1117;
+            --surface: #181a20;
+            --border: #23262f;
+            --text: #e0e0e6;
+            --text-muted: #7a7d8a;
+            --accent: #4ade80;
+            --accent-dim: #166534;
+            --warn: #facc15;
+            --warn-dim: #713f12;
+            --danger: #f87171;
+            --danger-dim: #7f1d1d;
+            --radius: 8px;
+        }
+
+        html {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        /* ── Header ───────────────────────────────────────── */
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 24px;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            flex-shrink: 0;
+        }
+
+        .status-dot.warn {
+            background: var(--warn);
+        }
+
+        .status-dot.danger {
+            background: var(--danger);
+        }
+
+        header h1 {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+
+        .header-tags {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .tag {
+            font-size: 11px;
+            padding: 3px 10px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            background: var(--bg);
+        }
+
+        .tag.active {
+            border-color: var(--accent-dim);
+            color: var(--accent);
+            background: rgba(74, 222, 128, 0.06);
+        }
+
+        .tag.warn {
+            border-color: var(--warn-dim);
+            color: var(--warn);
+            background: rgba(250, 204, 21, 0.06);
+        }
+
+        /* ── Layout ───────────────────────────────────────── */
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            gap: 20px;
+            padding: 20px 24px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* ── Cards ────────────────────────────────────────── */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+        }
+
+        .card-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 10px;
+        }
+
+        /* ── Video ────────────────────────────────────────── */
+        .video-card {
+            padding: 10px;
+        }
+
+        .video-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 6px 10px;
+        }
+
+        .video-header .label {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        #incident-badge {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--accent);
+        }
+
+        .video-card img {
+            width: 100%;
+            height: 420px;
+            object-fit: cover;
+            border-radius: 6px;
+            background: #000;
+            display: block;
+        }
+
+        .video-card.alarm {
+            border-color: var(--danger);
+            box-shadow: 0 0 20px rgba(248, 113, 113, 0.15);
+        }
+
+        /* ── Sidebar ──────────────────────────────────────── */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* ── Enrollment ───────────────────────────────────── */
+        .enroll-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 8px 12px;
+            font-size: 13px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            outline: none;
+            margin-bottom: 10px;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--accent);
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        button {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 7px 14px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: background 0.15s, opacity 0.15s;
+        }
+
+        button:active {
+            opacity: 0.85;
+        }
+
+        .btn-primary {
+            flex: 1;
+            background: var(--accent-dim);
+            color: var(--accent);
+        }
+
+        .btn-primary:hover {
+            background: #1a7a3e;
+        }
+
+        .btn-primary.scanning {
+            background: var(--warn-dim);
+            color: var(--warn);
+        }
+
+        .btn-secondary {
+            background: var(--bg);
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--danger-dim);
+            color: var(--danger);
+        }
+
+        .enrolled-info {
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .enrolled-info span {
+            color: var(--accent);
+        }
+
+        /* ── Gauges ───────────────────────────────────────── */
+        .gauge-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .gauge {
+            text-align: center;
+            padding: 14px 10px;
+        }
+
+        .gauge .value {
+            font-size: 26px;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        .gauge .value.audio {
+            color: #60a5fa;
+        }
+
+        .gauge .value.motion {
+            color: var(--warn);
+        }
+
+        .gauge .sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* ── Log Table ────────────────────────────────────── */
+        .log-scroll {
+            max-height: 160px;
+            overflow-y: auto;
+        }
+
+        .log-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .log-scroll::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 2px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        thead th {
+            text-align: left;
+            font-weight: 500;
+            color: var(--text-muted);
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tbody tr {
+            border-bottom: 1px solid var(--border);
+        }
+
+        tbody td {
+            padding: 5px 0;
+            color: var(--text-muted);
+        }
+
+        /* ── Responsive ───────────────────────────────────── */
+        @media (max-width: 860px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 
-<body class="bg-slate-950 text-slate-100 min-h-screen font-mono">
-
-    <!-- Top Header -->
-    <header class="border-b border-slate-800 bg-slate-900/80 px-6 py-4 flex items-center justify-between backdrop-blur">
-        <div class="flex items-center space-x-3">
-            <div id="status-indicator" class="w-3.5 h-3.5 bg-emerald-500 rounded-full animate-ping"></div>
-            <h1 class="text-lg font-bold tracking-wider text-emerald-400">SMART WORKSTATION DEFENSE // PYTORCH & APACHE
-            </h1>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="header-left">
+            <div id="status-indicator" class="status-dot"></div>
+            <h1>SAVe-Duality</h1>
         </div>
-        <div class="flex items-center space-x-3 text-xs">
-            <span class="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded text-slate-300">STREAM: APACHE
-                KAFKA</span>
-            <span class="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded text-slate-300">LAKE: APACHE
-                ICEBERG</span>
-            <span id="active-user-badge"
-                class="bg-emerald-950 border border-emerald-500 text-emerald-400 font-bold px-3 py-1.5 rounded">NO OWNER
-                ENROLLED</span>
+        <div class="header-tags">
+            <span class="tag">Kafka</span>
+            <span class="tag">Iceberg</span>
+            <span id="active-user-badge" class="tag">No owner enrolled</span>
         </div>
     </header>
 
-    <div class="p-6 grid grid-cols-12 gap-6">
-
-        <!-- Left Column: Video Feed & Live Status -->
-        <div class="col-span-8 space-y-4">
-            <div id="video-box"
-                class="bg-slate-900 border-2 border-slate-800 rounded-lg overflow-hidden p-2 relative shadow-2xl transition-all">
-                <div
-                    class="flex justify-between items-center px-2 py-1 mb-2 text-xs text-slate-400 border-b border-slate-800">
-                    <span>LIVE CUBICLE CAM [FACETIME HD]</span>
-                    <span id="incident-badge" class="text-emerald-400 font-bold">STATUS: SECURE BASELINE</span>
+    <div class="grid">
+        <!-- Video Feed -->
+        <div>
+            <div id="video-box" class="card video-card">
+                <div class="video-header">
+                    <span class="label">Live feed</span>
+                    <span id="incident-badge">Secure</span>
                 </div>
-                <img src="/video_feed" class="w-full h-[450px] object-cover rounded bg-black" alt="CCTV Feed">
+                <img src="/video_feed" alt="Camera feed">
             </div>
         </div>
 
-        <!-- Right Column: Biometric Enrollment & Sensors -->
-        <div class="col-span-4 space-y-4">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <!-- Enrollment -->
+            <div class="card">
+                <div class="card-label">Face enrollment</div>
+                <div class="enroll-desc">Capture face profile for owner recognition.</div>
 
-            <!-- Owner Face Enrollment Box -->
-            <div class="bg-slate-900 border border-slate-800 rounded-lg p-4">
-                <div class="text-xs text-slate-400 font-bold mb-1">📸 BIOMETRIC FACEID ENROLLMENT</div>
-                <div class="text-[11px] text-slate-500 mb-3">Captures 15 neural angles using PyTorch Deep Metric
-                    Extraction.</div>
+                <input type="text" id="owner-name-input" placeholder="Owner name">
 
-                <div class="space-y-3">
-                    <input type="text" id="owner-name-input" placeholder="Enter Owner Name (e.g., Sohini)"
-                        class="w-full bg-slate-950 border border-slate-700 text-xs text-slate-100 px-3 py-2 rounded focus:outline-none focus:border-emerald-500">
-
-                    <div class="flex space-x-2">
-                        <button id="enroll-btn" onclick="enrollCurrentFace()"
-                            class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2 rounded transition active:scale-95">
-                            Start FaceID Scan
-                        </button>
-                        <button onclick="clearAllOwners()"
-                            class="bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-400 text-xs px-3 py-2 rounded border border-slate-700 transition">
-                            Clear
-                        </button>
-                    </div>
+                <div class="btn-row">
+                    <button id="enroll-btn" class="btn-primary" onclick="enrollCurrentFace()">Enrol</button>
+                    <button class="btn-secondary" onclick="clearAllOwners()">Clear</button>
                 </div>
 
-                <!-- Enrolled Owners List -->
-                <div class="mt-3 pt-3 border-t border-slate-800 text-[11px] text-slate-400">
-                    <span class="font-bold text-slate-300">Enrolled Owners:</span>
-                    <span id="enrolled-names" class="text-emerald-400 ml-1">None</span>
+                <div class="enrolled-info">
+                    Enrolled: <span id="enrolled-names">None</span>
                 </div>
             </div>
 
-            <!-- Sensor Gauges -->
-            <div class="grid grid-cols-2 gap-3">
-                <div class="bg-slate-900 border border-slate-800 rounded-lg p-3 text-center">
-                    <div class="text-[11px] text-slate-400 mb-1">ACOUSTIC SENSOR (MIC)</div>
-                    <div id="audio-val" class="text-2xl font-extrabold text-sky-400">0.0</div>
-                    <div class="text-[9px] text-slate-500 mt-0.5">Thud Alert &gt; 12.0</div>
+            <!-- Gauges -->
+            <div class="gauge-row">
+                <div class="card gauge">
+                    <div class="card-label">Audio</div>
+                    <div id="audio-val" class="value audio">0.0</div>
+                    <div class="sub">Alert &gt; 12.0</div>
                 </div>
-
-                <div class="bg-slate-900 border border-slate-800 rounded-lg p-3 text-center">
-                    <div class="text-[11px] text-slate-400 mb-1">DESK MOTION SENSOR</div>
-                    <div id="motion-val" class="text-2xl font-extrabold text-amber-400">0.0</div>
-                    <div class="text-[9px] text-slate-500 mt-0.5">Theft Alert &gt; 5.0</div>
+                <div class="card gauge">
+                    <div class="card-label">Motion</div>
+                    <div id="motion-val" class="value motion">0.0</div>
+                    <div class="sub">Alert &gt; 5.0</div>
                 </div>
             </div>
 
-            <!-- Apache Iceberg Live Lakehouse Table -->
-            <div class="bg-slate-900 border border-slate-800 rounded-lg p-4">
-                <div class="flex justify-between items-center mb-2">
-                    <span class="text-xs text-slate-400 font-bold">APACHE ICEBERG DATA LAKE (ACID LOG)</span>
-                    <span class="text-[10px] text-emerald-400">Queried via PyIceberg</span>
-                </div>
-                <div class="overflow-y-auto h-36 text-[11px]">
-                    <table class="w-full text-left text-slate-300">
-                        <thead class="text-slate-500 border-b border-slate-800">
+            <!-- Incident Log -->
+            <div class="card">
+                <div class="card-label">Incident log</div>
+                <div class="log-scroll">
+                    <table>
+                        <thead>
                             <tr>
-                                <th class="pb-1">TIMESTAMP</th>
-                                <th class="pb-1">INCIDENT</th>
+                                <th>Time</th>
+                                <th>Event</th>
                             </tr>
                         </thead>
-                        <tbody id="audit-table-body">
-                            <!-- Injected live from real Iceberg table -->
-                        </tbody>
+                        <tbody id="audit-table-body"></tbody>
                     </table>
                 </div>
             </div>
-
         </div>
     </div>
 
-    <!-- Live Telemetry Poller -->
+    <!-- Telemetry -->
     <script>
         let registeredOwners = [];
 
@@ -140,107 +419,100 @@
             const input = document.getElementById('owner-name-input');
             const btn = document.getElementById('enroll-btn');
             const name = input.value.trim();
-            if (!name) {
-                alert("Please enter a name first!");
-                return;
-            }
+            if (!name) { alert('Enter a name first.'); return; }
 
             btn.disabled = true;
-            btn.innerText = "Scanning 15 Angles...";
-            btn.className = "flex-1 bg-amber-600 text-white font-bold text-xs py-2 rounded animate-pulse";
+            btn.textContent = 'Scanning…';
+            btn.classList.add('scanning');
 
             try {
                 const res = await fetch('/api/enroll_owner', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: name })
+                    body: JSON.stringify({ name })
                 });
                 const data = await res.json();
 
                 if (data.status === 'success') {
                     if (!registeredOwners.includes(name)) registeredOwners.push(name);
-                    document.getElementById('enrolled-names').innerText = registeredOwners.join(', ');
+                    document.getElementById('enrolled-names').textContent = registeredOwners.join(', ');
                     input.value = '';
-                    alert(`[✓] FaceID master profile saved for ${name} (${data.frames_scanned} angles compiled)!`);
+                    alert(`Profile saved for ${name} (${data.frames_scanned} frames).`);
                 } else {
-                    alert(`[!] ${data.message}`);
+                    alert(data.message);
                 }
-            } catch (err) {
-                alert("Enrollment failed. Ensure face is clearly visible.");
+            } catch {
+                alert('Enrollment failed. Ensure face is visible.');
             } finally {
                 btn.disabled = false;
-                btn.innerText = "Start FaceID Scan";
-                btn.className = "flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2 rounded transition active:scale-95";
+                btn.textContent = 'Enrol';
+                btn.classList.remove('scanning');
             }
         }
 
         async function clearAllOwners() {
             await fetch('/api/clear_owners', { method: 'POST' });
             registeredOwners = [];
-            document.getElementById('enrolled-names').innerText = 'None';
-            alert("Cleared all enrolled owners.");
+            document.getElementById('enrolled-names').textContent = 'None';
         }
 
-        // Poll telemetry every 350ms (Zero Lag)
+        // Status polling
         setInterval(async () => {
             try {
                 const res = await fetch('/api/telemetry');
-                const data = await res.json();
+                const d = await res.json();
 
-                document.getElementById('audio-val').innerText = data.audio_level;
-                document.getElementById('motion-val').innerText = data.motion_level || data.desk_assets || 0;
-                document.getElementById('incident-badge').innerText = data.incident_tag;
+                document.getElementById('audio-val').textContent = d.audio_level;
+                document.getElementById('motion-val').textContent = d.motion_level || d.desk_assets || 0;
+                document.getElementById('incident-badge').textContent = d.incident_tag;
 
-                const videoBox = document.getElementById('video-box');
+                const dot = document.getElementById('status-indicator');
+                const box = document.getElementById('video-box');
                 const badge = document.getElementById('incident-badge');
                 const userBadge = document.getElementById('active-user-badge');
-                const ping = document.getElementById('status-indicator');
 
-                if (data.owner_name !== "None") {
-                    userBadge.innerText = `OWNER: ${data.owner_name.toUpperCase()} (AUTH)`;
-                    userBadge.className = 'bg-emerald-950 border border-emerald-500 text-emerald-400 font-bold px-3 py-1.5 rounded';
-                } else if (data.person_present) {
-                    userBadge.innerText = 'VISITOR / STRANGER PRESENT';
-                    userBadge.className = 'bg-amber-950 border border-amber-500 text-amber-400 font-bold px-3 py-1.5 rounded';
+                // Owner badge
+                if (d.owner_name !== 'None') {
+                    userBadge.textContent = d.owner_name;
+                    userBadge.className = 'tag active';
+                } else if (d.person_present) {
+                    userBadge.textContent = 'Visitor detected';
+                    userBadge.className = 'tag warn';
                 } else {
-                    userBadge.innerText = 'CUBICLE EMPTY / MONITORING';
-                    userBadge.className = 'bg-slate-800 border border-slate-700 text-slate-400 font-bold px-3 py-1.5 rounded';
+                    userBadge.textContent = 'No presence';
+                    userBadge.className = 'tag';
                 }
 
-                if (data.status === 'TAMPER_DETECTED') {
-                    videoBox.classList.add('alarm-border');
-                    badge.className = 'text-red-400 font-bold';
-                    ping.className = 'w-3.5 h-3.5 bg-red-500 rounded-full animate-ping';
-                } else if (data.status === 'VISITOR_NOTICE') {
-                    videoBox.classList.remove('alarm-border');
-                    badge.className = 'text-amber-400 font-bold';
-                    ping.className = 'w-3.5 h-3.5 bg-amber-500 rounded-full animate-ping';
+                // Status colour
+                if (d.status === 'TAMPER_DETECTED') {
+                    box.classList.add('alarm');
+                    badge.style.color = 'var(--danger)';
+                    dot.className = 'status-dot danger';
+                } else if (d.status === 'VISITOR_NOTICE') {
+                    box.classList.remove('alarm');
+                    badge.style.color = 'var(--warn)';
+                    dot.className = 'status-dot warn';
                 } else {
-                    videoBox.classList.remove('alarm-border');
-                    badge.className = 'text-emerald-400 font-bold';
-                    ping.className = 'w-3.5 h-3.5 bg-emerald-500 rounded-full animate-ping';
+                    box.classList.remove('alarm');
+                    badge.style.color = 'var(--accent)';
+                    dot.className = 'status-dot';
                 }
-            } catch (err) {
-                console.error(err);
-            }
+            } catch (e) { console.error(e); }
         }, 350);
 
-        // Fetch Live Incident Logs Directly from Fast Cache
+        // Log polling
         setInterval(async () => {
             try {
                 const res = await fetch('/api/iceberg_logs');
-                const records = await res.json();
+                const rows = await res.json();
                 const tbody = document.getElementById('audit-table-body');
                 tbody.innerHTML = '';
-                records.forEach(r => {
+                rows.forEach(r => {
                     const tr = document.createElement('tr');
-                    tr.className = 'border-b border-slate-800 text-rose-300';
-                    tr.innerHTML = `<td>${r.timestamp}</td><td>${r.incident.slice(0, 36)}</td>`;
+                    tr.innerHTML = `<td>${r.timestamp}</td><td>${r.incident.slice(0, 40)}</td>`;
                     tbody.appendChild(tr);
                 });
-            } catch (err) {
-                console.error(err);
-            }
+            } catch (e) { console.error(e); }
         }, 2000);
     </script>
 </body>

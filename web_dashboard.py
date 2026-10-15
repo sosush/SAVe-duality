@@ -116,6 +116,59 @@ mtcnn = MTCNN(
 resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
 print(f"[✓] MTCNN Face Detector & InceptionResnetV1 (VGGFace2) active on: {device}")
 
+# Real Object Detection Backbone (SSDLite MobileNetV3)
+import torchvision.models.detection as obj_detection
+print("[*] Initializing SSDLite MobileNetV3 neural object detector...")
+OBJECT_DETECTOR = obj_detection.ssdlite320_mobilenet_v3_large(
+    weights=obj_detection.SSDLite320_MobileNet_V3_Large_Weights.DEFAULT
+).eval().to(device)
+COCO_CATEGORIES = obj_detection.SSDLite320_MobileNet_V3_Large_Weights.DEFAULT.meta["categories"]
+print("[✓] SSDLite MobileNetV3 active for real object identification.")
+
+# Furniture, fixtures, and background structures to ignore
+BACKGROUND_FURNITURE_CLASSES = {
+    'person', '__background__', 'N/A', 'chair', 'couch', 'bed', 
+    'dining table', 'toilet', 'tv', 'microwave', 'oven', 'toaster', 
+    'sink', 'refrigerator', 'potted plant', 'bench', 'traffic light',
+    'fire hydrant', 'stop sign', 'parking meter', 'clock', 'vase'
+}
+
+def detect_objects_nn(frame):
+    """
+    Runs MobileNetV3 SSDLite detector on frame for real-time inference.
+    Filters out static room furniture and background fixtures.
+    """
+    h, w = frame.shape[:2]
+    infer_w, infer_h = 480, 360
+    small_rgb = cv2.cvtColor(cv2.resize(frame, (infer_w, infer_h)), cv2.COLOR_BGR2RGB)
+    tensor = transforms.functional.to_tensor(small_rgb).unsqueeze(0).to(device)
+    with torch.no_grad():
+        preds = OBJECT_DETECTOR(tensor)[0]
+    
+    results = []
+    boxes = preds['boxes'].cpu().numpy()
+    labels = preds['labels'].cpu().numpy()
+    scores = preds['scores'].cpu().numpy()
+    
+    sx = w / float(infer_w)
+    sy = h / float(infer_h)
+    
+    for box, label_idx, score in zip(boxes, labels, scores):
+        if score < 0.28:
+            continue
+        label_name = COCO_CATEGORIES[label_idx] if label_idx < len(COCO_CATEGORIES) else "object"
+        if label_name not in BACKGROUND_FURNITURE_CLASSES:
+            x1 = max(0, int(box[0] * sx))
+            y1 = max(0, int(box[1] * sy))
+            x2 = min(w, int(box[2] * sx))
+            y2 = min(h, int(box[3] * sy))
+            results.append({
+                'label': 'object',
+                'box': (x1, y1, max(1, x2 - x1), max(1, y2 - y1)),
+                'score': float(score)
+            })
+    return results
+
 def detect_face_fast(frame):
     """
     Ultra-fast (8-10ms) deep neural face detector using MTCNN on downscaled frame.
@@ -181,18 +234,20 @@ def match_face(embedding):
 
 def robust_skin_mask(bgr):
     """
-    Multi-space (YCrCb + RGB) skin filter for hand vs object discrimination.
+    Robust skin detector combining YCrCb and HSV color spaces for all lighting conditions.
     """
     ycrcb = cv2.cvtColor(bgr, cv2.COLOR_BGR2YCrCb)
     cr = ycrcb[:, :, 1]
     cb = ycrcb[:, :, 2]
-    cond_ycrcb = (cr >= 130) & (cr <= 180) & (cb >= 75) & (cb <= 135)
+    cond_ycrcb = (cr >= 125) & (cr <= 185) & (cb >= 70) & (cb <= 140)
     
-    b, g, r = bgr[:, :, 0].astype(int), bgr[:, :, 1].astype(int), bgr[:, :, 2].astype(int)
-    cond_rgb = (r > 60) & (g > 25) & (b > 15) & (r > g) & (r > b)
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    h_channel = hsv[:, :, 0]
+    s_channel = hsv[:, :, 1]
+    cond_hsv = ((h_channel <= 25) | (h_channel >= 165)) & (s_channel >= 28) & (s_channel <= 240)
     
-    mask = (cond_ycrcb & cond_rgb).astype(np.uint8) * 255
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    mask = ((cond_ycrcb | cond_hsv)).astype(np.uint8) * 255
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     return cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 
 # ----------------- STATE -----------------
@@ -237,7 +292,9 @@ def send_notification(title, message, sound="Basso"):
     global LAST_NOTIF_TIME
     now = time.time()
     if now - LAST_NOTIF_TIME > 3.0:
-        cmd = f'osascript -e \'display notification "{message}" with title "{title}" sound name "{sound}"\''
+        safe_title = title.replace('"', '').replace("'", "")
+        safe_msg = message.replace('"', '').replace("'", "")
+        cmd = f'osascript -e \'display notification "{safe_msg}" with title "{safe_title}" sound name "{sound}"\''
         subprocess.Popen(cmd, shell=True)
         LAST_NOTIF_TIME = now
 
@@ -249,6 +306,7 @@ class CubicleDefenseEngine:
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         self.prev_desk_gray = None
+        self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=25, detectShadows=True)
         self.latest_frame_bytes = None
         self.latest_raw_frame = None
         self.running = True
@@ -310,140 +368,134 @@ class CubicleDefenseEngine:
                     cv2.rectangle(frame, (fx, fy), (fx+fw, fy+fh), (0, 220, 255), 2)
                     cv2.putText(frame, "VISITOR / STRANGER", (fx, max(20, fy-8)),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 220, 255), 2)
-
-            # ----------------- 2. ROOM BACKGROUND vs DESK FOREGROUND MOTION -----------------
-            # Startup camera auto-exposure stabilization
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            gray_blurred = cv2.GaussianBlur(gray, (15, 15), 0)
-
+            # ----------------- 2. REAL OBJECT DETECTION + HAND PROXIMITY -----------------
             theft_detected = False
             theft_item_label = ""
             is_empty_hand = False
-            room_motion_detected = False
-            active_desk_boxes = []
-            desk_horizon_y = int(h * 0.68)
+            object_in_hand_detected = False
+            bg_movement_detected = False
+            active_motion_boxes = []
 
-            if frame_idx < 15:
-                # Camera sensor auto-exposure and white-balance warm-up
-                self.prev_desk_gray = gray_blurred.copy()
-            elif self.prev_desk_gray is not None:
-                diff = cv2.absdiff(self.prev_desk_gray, gray_blurred)
-                _, thresh = cv2.threshold(diff, 35, 255, cv2.THRESH_BINARY)
-                thresh = cv2.dilate(thresh, None, iterations=2)
-                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # Detect real physical objects via MobileNetV3 every 4 frames (~120ms) for snappy, accurate detection
+            if not hasattr(self, 'cached_objects'):
+                self.cached_objects = []
 
-                skin_mask = robust_skin_mask(frame)
+            if frame_idx % 4 == 0:
+                try:
+                    self.cached_objects = detect_objects_nn(frame)
+                except Exception as e:
+                    self.cached_objects = []
 
-                for c in contours:
-                    area = cv2.contourArea(c)
-                    if area < 1500:
-                        continue
+            skin_mask = robust_skin_mask(frame)
 
-                    bx, by, bw, bh = cv2.boundingRect(c)
+            # Check for detected real physical objects
+            detected_objects = self.cached_objects
 
-                    # KEY ISOLATION: Check if motion originates in the room/background
-                    if by < desk_horizon_y:
-                        # Motion is in the room (person walking past, wardrobe, bed, background objects)
-                        # THIS IS STRICTLY ROOM ACTIVITY / VISITOR MOTION - NEVER DESK THEFT!
-                        room_motion_detected = True
-                        if not owner_authenticated and not person_present:
-                            cv2.rectangle(frame, (bx, by), (bx+bw, by+bh), (120, 160, 180), 1)
-                        continue
+            for obj in detected_objects:
+                ox, oy, ow, oh = obj['box']
+                label = obj['label']
+                conf = obj['score']
 
-                    # FOREGROUND DESK REGION (by >= desk_horizon_y):
-                    c_mask = np.zeros((bh, bw), dtype=np.uint8)
-                    cv2.drawContours(c_mask, [c - (bx, by)], -1, 255, -1)
-                    total_moving = int(np.sum(c_mask == 255))
-                    if total_moving < 1000:
-                        continue
+                # Compute skin proximity around and inside the object box (hand holding item)
+                pad_x = max(0, ox - int(ow * 0.50))
+                pad_y = max(0, oy - int(oh * 0.50))
+                pad_w = min(w - pad_x, ow + int(ow * 1.0))
+                pad_h = min(h - pad_y, oh + int(oh * 1.0))
+                obj_skin_region = skin_mask[pad_y:pad_y+pad_h, pad_x:pad_x+pad_w]
+                skin_in_vicinity = int(np.sum(obj_skin_region == 255))
+                # If there are skin pixels in/around the object or a person is close in front
+                is_held = skin_in_vicinity > 150
 
-                    box_skin = skin_mask[by:by+bh, bx:bx+bw]
-                    box_gray = gray[by:by+bh, bx:bx+bw]
+                active_motion_boxes.append((ox, oy, ow, oh))
 
-                    edges = cv2.Canny(box_gray, 40, 120)
-                    contour_edges = (c_mask == 255) & (edges > 0)
-                    edge_density = float(np.sum(contour_edges)) / float(max(1, total_moving))
-
-                    if edge_density < 0.025:
-                        # Subtle shadow or lighting shift -> ignore
-                        continue
-
-                    moving_skin = (c_mask == 255) & (box_skin == 255)
-                    skin_ratio = float(np.sum(moving_skin)) / float(max(1, total_moving))
-
-                    active_desk_boxes.append((bx, by, bw, bh))
-
-                    if owner_authenticated:
-                        # REGISTERED OWNER IS PRESENT: ALL desk access is 100% authorized!
-                        cv2.rectangle(frame, (bx, by), (bx+bw, by+bh), (0, 255, 0), 2)
-                        cv2.putText(frame, "AUTHORIZED ACCESS", (bx, max(20, by - 6)),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 2)
+                if owner_authenticated:
+                    # Authorized owner holding or interacting with object
+                    status_text = "OWNER HELD: OBJECT" if is_held else "OBJECT DETECTED"
+                    cv2.rectangle(frame, (ox, oy), (ox+ow, oy+oh), (0, 255, 0), 2)
+                    cv2.putText(frame, f"{status_text} ({int(conf*100)}%)", (ox, max(20, oy - 6)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 2)
+                else:
+                    # For visitor / unattended: ONLY trigger when object is actively IN HAND
+                    if is_held:
+                        object_in_hand_detected = True
+                        theft_detected = True
+                        theft_item_label = "OBJECT IN VISITOR'S HAND"
+                        cv2.rectangle(frame, (ox, oy), (ox+ow, oy+oh), (0, 0, 255), 2)
+                        cv2.putText(frame, f"🚨 OBJECT IN HAND ({int(conf*100)}%)", (ox, max(20, oy - 6)),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 0, 255), 2)
                     else:
-                        # OWNER AWAY: Discriminate empty hand from stolen desk object
-                        if skin_ratio >= 0.18:
-                            # Bare empty hand passing across desk without removing an object
-                            is_empty_hand = True
-                            cv2.rectangle(frame, (bx, by), (bx+bw, by+bh), (0, 215, 255), 2)
-                            cv2.putText(frame, "EMPTY HAND: NO ASSET DISPLACED", (bx, max(20, by - 6)),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 215, 255), 2)
-                        elif edge_density >= 0.035 and area >= 2000:
-                            # Solid non-skin physical object / asset being lifted or taken from the desk!
-                            theft_detected = True
-                            theft_item_label = "OBJECT / ASSET DISPLACED FROM DESK"
-                            cv2.rectangle(frame, (bx, by), (bx+bw, by+bh), (0, 0, 255), 2)
-                            cv2.putText(frame, "🚨 THEFT: OBJECT DISPLACED", (bx, max(20, by - 6)),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
+                        # Static resting item on table/desk (e.g., monitor, laptop sitting idle)
+                        cv2.rectangle(frame, (ox, oy), (ox+ow, oy+oh), (120, 160, 180), 1)
+                        cv2.putText(frame, "STATIONARY ASSET", (ox, max(20, oy - 6)),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.40, (120, 160, 180), 1)
 
-                self.prev_desk_gray = gray_blurred.copy()
+            # Check if someone reached with an empty hand (when no object is detected)
+            if not theft_detected and not owner_authenticated:
+                # Mask out face region so face doesn't trigger hand detection
+                hand_skin_mask = skin_mask.copy()
+                if person_present and last_seen_face_box is not None:
+                    fx, fy, fw, fh = last_seen_face_box
+                    # Clear out face and torso area from hand mask
+                    fy_end = min(h, fy + int(fh * 3.5))
+                    fx_start = max(0, fx - int(fw * 0.8))
+                    fx_end = min(w, fx + int(fw * 1.8))
+                    hand_skin_mask[fy:fy_end, fx_start:fx_end] = 0
+
+                hand_contours, _ = cv2.findContours(hand_skin_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                for hc in hand_contours:
+                    h_area = cv2.contourArea(hc)
+                    if 1800 < h_area < 25000:
+                        hx, hy, hw, hh = cv2.boundingRect(hc)
+                        is_empty_hand = True
+                        active_motion_boxes.append((hx, hy, hw, hh))
+                        cv2.rectangle(frame, (hx, hy), (hx+hw, hy+hh), (0, 215, 255), 2)
+                        cv2.putText(frame, "HAND DETECTED (EMPTY)", (hx, max(20, hy - 6)),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 215, 255), 1)
+                        break
+
             audio_energy = float(AUDIO_BUFFER[-1]) if AUDIO_BUFFER else 0.0
 
             # ----------------- SECURITY RULES DECISION -----------------
             if owner_authenticated:
-                # RULE 1: REGISTERED USER IS PRESENT AT CAMERA
-                # STRICT IMMUNITY: Never flag anything below or above baseline!
                 status = "AUTHENTIC"
                 incident = f"🟢 AUTHORIZED ACTIVITY (OWNER {ACTIVE_OWNER_NAME.upper()} PRESENT)"
                 VISITOR_NOTIFIED = False
             elif theft_detected:
-                # RULE 2: OBJECT BEING REMOVED BY UNAUTHORIZED PERSON IN DESK ZONE
                 status = "TAMPER_DETECTED"
-                incident = f"🚨 THEFT DETECTED: {theft_item_label}"
-                send_notification("SECURITY ALERT: THEFT ATTEMPT", "Someone is lifting or moving an object from your unattended desk!", sound="Basso")
-            elif not person_present and audio_energy > 20.0:
-                # RULE 3: LOUD THUD / IMPACT WHILE OWNER IS AWAY
+                incident = f"🚨 TAMPER DETECTED: {theft_item_label}"
+                send_notification("SECURITY ALERT: OBJECT MOVED", f"Alert: {theft_item_label} detected while unattended!", sound="Basso")
+            elif not owner_authenticated and audio_energy > 12.0:
                 status = "TAMPER_DETECTED"
-                incident = "🚨 LOUD ACOUSTIC EVENT DETECTED (IMPACT AT UNATTENDED DESK)"
-                send_notification("CUBICLE SECURITY ALERT", "Loud impact detected at your unattended desk!", sound="Sosumi")
+                incident = "🚨 LOUD ACOUSTIC EVENT DETECTED (OFF-CAMERA IMPACT)"
+                send_notification("SECURITY ALERT: ACOUSTIC IMPACT", "Loud off-camera thud or impact detected at workstation!", sound="Sosumi")
             elif is_empty_hand:
-                # RULE 4: VISITOR EMPTY HAND IN DESK ZONE (NO OBJECT TAKEN)
                 status = "VISITOR_NOTICE"
-                incident = "🟡 VISITOR HAND IN DESK ZONE (NO OBJECT REMOVED)"
+                incident = "🟡 VISITOR HAND MOTION (NO OBJECT IN HAND)"
                 LAST_VISITOR_SEEN_TIME = now
                 if not VISITOR_NOTIFIED:
-                    send_notification("CUBICLE NOTICE", "Someone placed an empty hand on your desk (no object taken).", sound="Ping")
+                    send_notification("CUBICLE NOTICE", "Someone waved or reached an empty hand across the view.", sound="Ping")
                     VISITOR_NOTIFIED = True
             elif person_present:
-                # RULE 5: VISITOR STANDING IN CUBICLE / ROOM
                 status = "VISITOR_NOTICE"
-                incident = "🟡 VISITOR PRESENT AT CUBICLE (MONITORING)"
+                incident = "🟡 VISITOR PRESENT (MONITORING)"
                 LAST_VISITOR_SEEN_TIME = now
                 if not VISITOR_NOTIFIED:
-                    send_notification("CUBICLE NOTICE", "A visitor is currently standing at your cubicle.", sound="Ping")
+                    send_notification("CUBICLE NOTICE", "A visitor is in front of the workstation.", sound="Ping")
                     VISITOR_NOTIFIED = True
+            elif bg_movement_detected:
+                status = "AUTHENTIC"
+                incident = "🔵 BACKGROUND MOTION OBSERVED (NO THREAT)"
             else:
-                # RULE 6: CUBICLE EMPTY & SECURE (Background motion in room is ignored)
                 status = "AUTHENTIC"
                 incident = "✅ SECURE BASELINE: INFRASTRUCTURE NORMAL"
 
-            if not person_present and not is_empty_hand and (now - LAST_VISITOR_SEEN_TIME > 8.0):
+            if not person_present and not is_empty_hand and not theft_detected and (now - LAST_VISITOR_SEEN_TIME > 8.0):
                 VISITOR_NOTIFIED = False
 
             # Draw HUD Overlays
             hud_color = (0, 0, 255) if status == "TAMPER_DETECTED" else ((0, 220, 255) if status == "VISITOR_NOTICE" else (0, 255, 0))
-            cv2.line(frame, (0, desk_horizon_y), (w, desk_horizon_y), (0, 255, 200), 2)
-            cv2.putText(frame, "DESK FOREGROUND MONITORING ZONE (ASSET DEFENSE)", (15, desk_horizon_y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 255, 200), 1)
-            cv2.putText(frame, f"STATUS: {incident}", (20, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.50, hud_color, 2)
-            cv2.putText(frame, "REC ● LIVE [30 FPS]", (w - 170, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 0, 255), 2)
+            cv2.putText(frame, f"STATUS: {incident}", (20, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.48, hud_color, 2)
+            cv2.putText(frame, "FULL-FRAME TRACKING ● LIVE", (w - 230, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 200, 255), 1)
 
             TELEMETRY = {
                 "status": status,
@@ -451,8 +503,8 @@ class CubicleDefenseEngine:
                 "owner_name": display_owner_name,
                 "person_present": person_present,
                 "match_confidence": round(current_confidence, 2),
-                "desk_assets": len(active_desk_boxes),
-                "motion_level": round(float(len(active_desk_boxes)), 1),
+                "desk_assets": len(active_motion_boxes),
+                "motion_level": round(float(len(active_motion_boxes)), 1),
                 "audio_level": round(audio_energy, 1),
                 "enrolled_count": len(ENROLLED_OWNERS)
             }
